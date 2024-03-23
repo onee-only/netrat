@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"sync"
@@ -14,7 +15,7 @@ import (
 const ()
 
 type Options struct {
-	Port uint16
+	SocketAddr string
 }
 
 type Server struct {
@@ -25,7 +26,17 @@ type Server struct {
 
 // New creates new netrat daemon.
 func New(opts Options) *Server {
-	srv := Server{}
+	srv := Server{
+		socketAddr: opts.SocketAddr,
+	}
+
+	srv.connPool = sync.Pool{New: func() any {
+		return &handler{
+			lenBuf:  make([]byte, 4),    // len(uint32)
+			recvBuf: make([]byte, 4096), // 4KB
+			buf:     new(bytes.Buffer),
+		}
+	}}
 
 	return &srv
 }
@@ -38,35 +49,7 @@ func (srv *Server) Run(ctx context.Context) (err error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
-		listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: srv.socketAddr})
-		if err != nil {
-			errchan <- errors.Wrap(err, "server: listening socket")
-			return
-		}
-		defer listener.Close()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				listener.SetDeadline(time.Now().Add(time.Second))
-			}
-
-			conn, err := listener.Accept()
-			if err != nil {
-				var netErr *net.OpError
-				if errors.As(err, netErr) && netErr.Timeout() {
-					continue
-				}
-				errchan <- errors.Wrap(err, "server: accepting connection")
-				return
-			}
-
-			h := srv.connPool.Get().(*handler)
-			go h.handle(ctx, conn)
-		}
+		srv.serveUnix(ctx, errchan)
 	}()
 
 	wg.Wait()
@@ -78,4 +61,38 @@ func (srv *Server) Run(ctx context.Context) (err error) {
 	}
 
 	return err
+}
+
+func (srv *Server) serveUnix(ctx context.Context, errchan chan<- error) {
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: srv.socketAddr})
+	if err != nil {
+		errchan <- errors.Wrap(err, "server: listening socket")
+		return
+	}
+	defer listener.Close()
+
+	for {
+		select {
+		case <-ctx.Done():
+			errchan <- errors.Wrap(ctx.Err(), "server: waiting for connection")
+			return
+		default:
+			listener.SetDeadline(time.Now().Add(time.Second))
+		}
+
+		conn, err := listener.Accept()
+		if err != nil {
+			if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+				continue
+			}
+			errchan <- errors.Wrap(err, "server: accepting connection")
+			return
+		}
+
+		h := srv.connPool.Get().(*handler)
+		go func() {
+			defer srv.connPool.Put(h)
+			h.handle(ctx, conn)
+		}()
+	}
 }
