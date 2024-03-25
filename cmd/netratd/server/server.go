@@ -3,12 +3,17 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"io"
 	"net"
 	"sync"
 	"time"
 
 	goerrors "errors"
 
+	"github.com/onee-only/netrat/cmd/netratd/server/internal/stat"
+	"github.com/onee-only/netrat/cmd/netratd/server/internal/worker"
+	"github.com/onee-only/netrat/internal/msg"
 	"github.com/pkg/errors"
 )
 
@@ -21,7 +26,10 @@ type Options struct {
 type Server struct {
 	socketAddr string
 
-	connPool sync.Pool
+	action *actTable
+
+	stateStore *stat.Storage
+	wManager   *worker.Manager
 }
 
 // New creates new netrat daemon.
@@ -30,12 +38,11 @@ func New(opts Options) *Server {
 		socketAddr: opts.SocketAddr,
 	}
 
-	srv.connPool = sync.Pool{New: func() any {
-		return &handler{
-			lenBuf:  make([]byte, 4),    // len(uint32)
-			recvBuf: make([]byte, 4096), // 4KB
-			buf:     new(bytes.Buffer),
-		}
+	srv.action = &actTable{lookup: map[msg.RequestType]requestHandler{
+		msg.RequestTypeDevList: func(ctx context.Context, r *msg.Request) (*msg.Response, error) {
+
+			return nil, nil
+		},
 	}}
 
 	return &srv
@@ -89,10 +96,108 @@ func (srv *Server) serveUnix(ctx context.Context, errchan chan<- error) {
 			return
 		}
 
-		h := srv.connPool.Get().(*handler)
 		go func() {
-			defer srv.connPool.Put(h)
-			h.handle(ctx, conn)
+			defer conn.Close()
+			srv.accept(ctx, conn)
 		}()
 	}
+}
+
+func (srv *Server) accept(ctx context.Context, conn net.Conn) {
+	var (
+		lenBuf  = make([]byte, 4)
+		recvBuf = make([]byte, 4096)
+		buf     = new(bytes.Buffer)
+	)
+
+	for {
+		req, err := srv.recv(ctx, conn, lenBuf, recvBuf, buf)
+		if err != nil {
+			res := msg.NewErrResponse(err)
+			if err := srv.send(ctx, res, conn, lenBuf, buf); err != nil {
+				// unexpected. fatal.
+			}
+			// TODO: maybe dump it?
+			continue
+		}
+
+		res, err := srv.action.execute(ctx, req)
+		if err != nil {
+			res = msg.NewErrResponse(err)
+			// TODO: maybe dump it?
+		}
+
+		if err := srv.send(ctx, res, conn, lenBuf, buf); err != nil {
+			// unexpected. fatal.
+		}
+	}
+}
+
+func (srv *Server) recv(ctx context.Context, conn net.Conn, lenBuf, recvBuf []byte, buf *bytes.Buffer) (*msg.Request, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			conn.SetDeadline(time.Now().Add(time.Second))
+		}
+
+		_, err := conn.Read(lenBuf)
+		if err != nil {
+			if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+				continue
+			}
+
+			return nil, err
+		}
+
+		length := int(binary.LittleEndian.Uint32(lenBuf))
+
+		buf.Grow(length)
+		for length > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+				conn.SetDeadline(time.Now().Add(time.Second))
+			}
+
+			n, err := conn.Read(recvBuf)
+			if err != nil {
+				if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+					continue
+				}
+				return nil, err
+			}
+
+			length -= n
+			buf.Write(recvBuf[:n])
+		}
+
+		req, err := msg.DecodeRequest(buf)
+		if err != nil {
+			return nil, errors.Wrap(err, "server: decoding request")
+		}
+
+		return req, nil
+	}
+}
+
+func (srv *Server) send(_ context.Context, res *msg.Response, conn net.Conn, lenBuf []byte, buf *bytes.Buffer) error {
+	if err := res.Encode(buf); err != nil {
+		return errors.Wrap(err, "server: encoding response")
+	}
+
+	binary.LittleEndian.PutUint32(lenBuf, uint32(buf.Len()))
+	_, err := conn.Write(lenBuf)
+	if err != nil {
+		return errors.Wrap(err, "server: writing len data")
+	}
+
+	_, err = io.Copy(conn, buf)
+	if err != nil {
+		return errors.Wrap(err, "server: writing payload")
+	}
+
+	return nil
 }

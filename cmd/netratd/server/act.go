@@ -7,7 +7,7 @@ import (
 	"github.com/onee-only/netrat/internal/msg"
 )
 
-type requestHandler func(context.Context, *msg.Request) (*msg.Response, error)
+type requestHandler func(ctx context.Context, r *msg.Request) (*msg.Response, error)
 
 type actTable struct {
 	lookup map[msg.RequestType]requestHandler
