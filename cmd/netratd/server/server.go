@@ -81,7 +81,7 @@ func (srv *Server) serveUnix(ctx context.Context, errchan chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
-			errchan <- errors.Wrap(ctx.Err(), "server: waiting for connection")
+			errchan <- errors.Wrap(context.Cause(ctx), "server: waiting for connection")
 			return
 		default:
 			listener.SetDeadline(time.Now().Add(time.Second))
@@ -137,7 +137,7 @@ func (srv *Server) recv(ctx context.Context, conn net.Conn, lenBuf, recvBuf []by
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, context.Cause(ctx)
 		default:
 			conn.SetDeadline(time.Now().Add(time.Second))
 		}
@@ -157,7 +157,7 @@ func (srv *Server) recv(ctx context.Context, conn net.Conn, lenBuf, recvBuf []by
 		for length > 0 {
 			select {
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, context.Cause(ctx)
 			default:
 				conn.SetDeadline(time.Now().Add(time.Second))
 			}
