@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 
+	_ "github.com/mattn/go-sqlite3"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/onee-only/netrat/cmd/netratd/server"
