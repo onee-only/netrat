@@ -11,13 +11,10 @@ import (
 
 	goerrors "errors"
 
-	"github.com/onee-only/netrat/cmd/netratd/server/internal/stat"
-	"github.com/onee-only/netrat/cmd/netratd/server/internal/worker"
 	"github.com/onee-only/netrat/internal/msg"
+	"github.com/onee-only/netrat/internal/worker"
 	"github.com/pkg/errors"
 )
-
-const ()
 
 type Options struct {
 	SocketAddr string
@@ -28,8 +25,7 @@ type Server struct {
 
 	action *actTable
 
-	stateStore *stat.Storage
-	wManager   *worker.Manager
+	wManager *worker.Manager
 }
 
 // New creates new netrat daemon.
@@ -38,12 +34,11 @@ func New(opts Options) *Server {
 		socketAddr: opts.SocketAddr,
 	}
 
-	srv.action = &actTable{lookup: map[msg.RequestType]requestHandler{
-		msg.RequestTypeDevList: func(ctx context.Context, r *msg.Request) (*msg.Response, error) {
-
-			return nil, nil
+	srv.action = &actTable{
+		lookup: map[msg.RequestType]requestHandler{
+			msg.RequestTypeListen: srv.HandleListen,
 		},
-	}}
+	}
 
 	return &srv
 }
