@@ -9,12 +9,12 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/uuid"
 	"github.com/onee-only/netrat/internal/assembler"
 	asmfactory "github.com/onee-only/netrat/internal/assembler/factory"
 	"github.com/onee-only/netrat/internal/config"
+	"github.com/onee-only/netrat/internal/container"
 	"github.com/onee-only/netrat/internal/storage"
 	storagefactory "github.com/onee-only/netrat/internal/storage/packet/factory"
 	"github.com/onee-only/netrat/pkg/assemble"
@@ -130,24 +130,25 @@ func (w *Worker) Exec(ctx context.Context) error {
 		return err
 	}
 
-	var packet gopacket.Layer
+	var packet container.Packet
 	for {
 		select {
 		case <-ctx.Done():
 			return context.Cause(ctx)
-		case packet = <-packets:
-			if packet == nil {
+		case p, ok := <-packets:
+			if !ok {
 				log.Println("done")
 				return nil
 			}
+			packet = p
 		}
 
-		if err := w.packetStorage.Store(packet); err != nil {
+		if err := w.packetStorage.Store(ctx, packet); err != nil {
 			w.Cancel()
 			return errors.Wrap(err, "worker: storing the packet")
 		}
 
-		if tcpPacket, ok := packet.(*layers.TCP); ok {
+		if tcpPacket, ok := packet.Layer.(*layers.TCP); ok {
 			for _, asm := range w.assemblers {
 				asm.Provide(tcpPacket)
 			}
