@@ -108,6 +108,10 @@ func (srv *Server) accept(ctx context.Context, conn net.Conn) {
 	for {
 		req, err := srv.recv(ctx, conn, lenBuf, recvBuf, buf)
 		if err != nil {
+			if err == io.EOF {
+				return
+			}
+
 			res := msg.NewErrResponse(err)
 			if err := srv.send(ctx, res, conn, lenBuf, buf); err != nil {
 				// unexpected. fatal.
