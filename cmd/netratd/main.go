@@ -7,11 +7,15 @@ import (
 	"os/signal"
 
 	_ "github.com/mattn/go-sqlite3"
-	_ "go.uber.org/automaxprocs"
+	"go.uber.org/automaxprocs/maxprocs"
 
 	"github.com/onee-only/netrat/cmd/netratd/server"
 	"github.com/onee-only/netrat/internal/config"
 )
+
+func init() {
+	maxprocs.Set()
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), signalsToHandle...)
