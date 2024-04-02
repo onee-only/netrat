@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"fmt"
+	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/onee-only/netrat/internal/container"
 	"github.com/pkg/errors"
@@ -16,38 +17,30 @@ type LayerStorage interface {
 }
 
 type PacketStorage struct {
-	layerStorages map[gopacket.LayerType]LayerStorage
-
 	db *sqlx.DB
+
+	layerStorages map[gopacket.LayerType]LayerStorage
 }
 
-func NewPacketStorage(path string) (*PacketStorage, error) {
-	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s/packet.db", path))
-	if err != nil {
-		return nil, errors.Wrap(err, "packet storage: opening db")
+func NewPacketStorage(capStorage *CaptureStorage) (*PacketStorage, error) {
+	storage := &PacketStorage{
+		db: capStorage.db,
+
+		layerStorages: make(map[gopacket.LayerType]LayerStorage),
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, errors.Wrap(err, "packet storage: ping db")
-	}
-
-	_, err = db.Exec(`
+	_, err := storage.db.Exec(`
 		CREATE TABLE packet(
 			id BLOB NOT NULL PRIMARY KEY, 
 			timestamp DATETIME NOT NULL,
-			UNIQUE(id, timestamp)
+			UNIQUE(id, timestamp),
+			FOREIGN KEY(id) REFERENCES packet(id)
 		)`)
 	if err != nil {
 		return nil, errors.Wrap(err, "packet storage: creating packet table")
 	}
 
-	p := &PacketStorage{
-		layerStorages: make(map[gopacket.LayerType]LayerStorage),
-
-		db: db,
-	}
-
-	return p, nil
+	return storage, nil
 }
 
 func (s *PacketStorage) Register(t gopacket.LayerType, storage LayerStorage) error {
@@ -61,17 +54,25 @@ func (s *PacketStorage) Register(t gopacket.LayerType, storage LayerStorage) err
 }
 
 func (s *PacketStorage) Store(ctx context.Context, packet container.Packet) error {
-	ls := s.layerStorages[packet.Layer.LayerType()]
-
-	_, err := s.db.ExecContext(ctx, "INSERT OR IGNORE INTO packet VALUES(?, ?)", packet.ID, packet.Timestamp)
-	if err != nil {
-		return errors.Wrap(err, "packet storage: inserting packet")
-	}
-
-	if err := ls.Store(ctx, packet); err != nil {
+	if err := s.storeMetadata(ctx, packet.ID, packet.Metadata().Timestamp); err != nil {
 		return err
 	}
 
+	for t, storage := range s.layerStorages {
+		if layer := packet.Layer(t); layer != nil {
+			if err := storage.Store(ctx, packet); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *PacketStorage) storeMetadata(ctx context.Context, id uuid.UUID, timestamp time.Time) error {
+	_, err := s.db.ExecContext(ctx, "INSERT INTO packet VALUES(?, ?)", id[:], timestamp)
+	if err != nil {
+		return errors.Wrap(err, "packet storage: inserting packet")
+	}
 	return nil
 }
 
