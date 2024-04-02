@@ -7,7 +7,9 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
+	"github.com/google/uuid"
 	"github.com/onee-only/netrat/internal/config"
+	"github.com/onee-only/netrat/internal/container"
 	"github.com/pkg/errors"
 )
 
@@ -45,23 +47,23 @@ func (o *ListenOptions) Validate() (*ListenOptions, error) {
 	return o, nil
 }
 
-type Listener struct {
+type listener struct {
 	opts *ListenOptions
 }
 
-func newListener(opts *ListenOptions) (l *Listener, err error) {
+func newListener(opts *ListenOptions) (l *listener, err error) {
 	opts, err = opts.Validate()
 	if err != nil {
 		return nil, err
 	}
 
-	l = &Listener{opts: opts}
+	l = &listener{opts: opts}
 
 	return
 }
 
-func (l *Listener) Listen(ctx context.Context) (_ <-chan gopacket.Layer, err error) {
-	packetStream := make(chan gopacket.Layer, config.PacketStreamBufSize)
+func (l *listener) listen(ctx context.Context) (_ <-chan container.Packet, err error) {
+	packetStream := make(chan container.Packet, config.PacketStreamBufSize)
 
 	var handle *pcap.Handle
 	if l.opts.Device != "" {
@@ -106,9 +108,15 @@ func (l *Listener) Listen(ctx context.Context) (_ <-chan gopacket.Layer, err err
 				}
 			}
 
+			id := uuid.New()
+
 			for _, capLayer := range l.opts.CaptureLayers {
 				if layer := packet.Layer(capLayer); layer != nil {
-					packetStream <- layer
+					packetStream <- container.Packet{
+						ID:     id,
+						Packet: packet,
+					}
+					break
 				}
 			}
 		}
