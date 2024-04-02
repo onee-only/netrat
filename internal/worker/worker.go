@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/google/gopacket/layers"
 	"github.com/google/uuid"
@@ -16,7 +17,8 @@ import (
 	"github.com/onee-only/netrat/internal/config"
 	"github.com/onee-only/netrat/internal/container"
 	"github.com/onee-only/netrat/internal/storage"
-	storagefactory "github.com/onee-only/netrat/internal/storage/packet/factory"
+	astoragefactory "github.com/onee-only/netrat/internal/storage/assemble/factory"
+	pstoragefactory "github.com/onee-only/netrat/internal/storage/packet/factory"
 	"github.com/onee-only/netrat/pkg/assemble"
 	"github.com/onee-only/netrat/pkg/stat"
 	"github.com/pkg/errors"
@@ -37,6 +39,9 @@ func (o *WorkerOptions) Validate() (*WorkerOptions, error) {
 		return nil, errors.New("listener: cannot use assembler when capture layer is not tcp")
 	}
 
+	slices.Sort(o.AssembleTypes)
+	o.AssembleTypes = slices.Compact(o.AssembleTypes)
+
 	invalidAsmTypes := make([]assemble.AssembleType, 0)
 	for _, t := range o.AssembleTypes {
 		if !t.Valid() {
@@ -52,11 +57,13 @@ func (o *WorkerOptions) Validate() (*WorkerOptions, error) {
 }
 
 type Worker struct {
-	ID uuid.UUID
+	ID      uuid.UUID
+	Start   time.Time
+	Timeout time.Duration
 
 	state stat.WorkerState
 
-	listener   *Listener
+	listener   *listener
 	assemblers []assembler.Assembler
 
 	packetStorage   *storage.PacketStorage
@@ -66,7 +73,7 @@ type Worker struct {
 	lock   sync.Mutex
 }
 
-func NewWorker(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.Context, err error) {
+func New(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.Context, err error) {
 	opts, err = opts.Validate()
 	if err != nil {
 		return nil, nil, err
@@ -79,14 +86,23 @@ func NewWorker(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.C
 		return nil, nil, errors.Wrap(err, "worker: creating namespace")
 	}
 
-	assembleStorage := storage.NewAssembleStorage(path)
-	packetStorage, err := storage.NewPacketStorage(path)
+	capStorage, err := storage.NewCaptureStorage(path)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "worker: creating capture storage")
+	}
+
+	assembleStorage, err := storage.NewAssembleStorage(capStorage)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "worker: creating assemble storage")
+	}
+
+	packetStorage, err := storage.NewPacketStorage(capStorage)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "worker: creating packet storage")
 	}
 
 	for _, t := range opts.CaptureLayers {
-		s := storagefactory.New(t)
+		s := pstoragefactory.New(t)
 		if err := packetStorage.Register(t, s); err != nil {
 			return nil, nil, errors.Wrap(err, "worker: registering packet layer")
 		}
@@ -94,12 +110,13 @@ func NewWorker(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.C
 
 	assemblers := make([]assembler.Assembler, len(opts.AssembleTypes))
 	for idx, t := range opts.AssembleTypes {
-		assemblers[idx] = asmfactory.New(t)
+		s := astoragefactory.New(t)
 
-		if err := assembleStorage.Register(t); err != nil {
+		if err := assembleStorage.Register(t, s); err != nil {
 			return nil, nil, errors.Wrap(err, "worker: registering asm to storage")
 		}
 
+		assemblers[idx] = asmfactory.New(t, s)
 	}
 
 	listener, err := newListener(&opts.ListenOptions)
@@ -111,7 +128,8 @@ func NewWorker(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.C
 
 	w = &Worker{
 		ID:              id,
-		state:           stat.WorkerStateUp,
+		Timeout:         opts.Timeout,
+		state:           stat.WorkerStateInit,
 		listener:        listener,
 		assemblers:      assemblers,
 		assembleStorage: assembleStorage,
@@ -123,24 +141,26 @@ func NewWorker(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.C
 }
 
 func (w *Worker) Exec(ctx context.Context) error {
+	w.state = stat.WorkerStateUp
+	w.Start = time.Now()
 	defer w.updateState(stat.WorkerStateFin)
 
-	packets, err := w.listener.Listen(ctx)
+	packets, err := w.listener.listen(ctx)
 	if err != nil {
 		return err
 	}
 
+	var ok bool
 	var packet container.Packet
 	for {
 		select {
 		case <-ctx.Done():
 			return context.Cause(ctx)
-		case p, ok := <-packets:
+		case packet, ok = <-packets:
 			if !ok {
 				log.Println("done")
 				return nil
 			}
-			packet = p
 		}
 
 		if err := w.packetStorage.Store(ctx, packet); err != nil {
@@ -148,9 +168,11 @@ func (w *Worker) Exec(ctx context.Context) error {
 			return errors.Wrap(err, "worker: storing the packet")
 		}
 
-		if tcpPacket, ok := packet.Layer.(*layers.TCP); ok {
-			for _, asm := range w.assemblers {
-				asm.Provide(tcpPacket)
+		if packet.NetworkLayer() != nil {
+			if _, ok := packet.TransportLayer().(*layers.TCP); ok {
+				for _, asm := range w.assemblers {
+					asm.Provide(packet)
+				}
 			}
 		}
 	}
