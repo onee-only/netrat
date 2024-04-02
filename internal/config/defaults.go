@@ -2,13 +2,11 @@ package config
 
 const (
 	DefaultServerAddr = "/var/run/netrat.sock"
-	DefaultDataPath   = "/tmp"
+	DefaultDataPath   = "/tmp/netratd"
 )
 
 const (
 	PacketSnapLen int32 = 65535
-)
 
-const (
 	PacketStreamBufSize = 10
 )
