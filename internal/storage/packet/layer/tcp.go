@@ -43,7 +43,7 @@ func (s *TCPStorage) Init(db *sqlx.DB) error {
 
 func (s *TCPStorage) Store(ctx context.Context, packet container.Packet) error {
 	tcp := packet.TransportLayer().(*layers.TCP)
-	schema := tcp2schema(packet.ID, tcp)
+	schema := tcpToSchema(packet.ID, tcp)
 	_, err := s.db.NamedExecContext(ctx,
 		`INSERT INTO tcp VALUES(
 			:id, :src, :dst, :seqnum, :acknum, :offset,
@@ -80,7 +80,7 @@ type TcpSchema struct {
 	Urgent   uint16 `db:"urgent"`
 }
 
-func tcp2schema(id uuid.UUID, tcp *layers.TCP) (schema *TcpSchema) {
+func tcpToSchema(id uuid.UUID, tcp *layers.TCP) (schema *TcpSchema) {
 	return &TcpSchema{
 		ID:  id[:],
 		Src: uint16(tcp.SrcPort), Dst: uint16(tcp.DstPort),
