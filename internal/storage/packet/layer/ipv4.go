@@ -36,7 +36,7 @@ var _ storage.LayerStorage = (*IPv4Storage)(nil)
 func (s *IPv4Storage) Init(db *sqlx.DB) error {
 	_, err := db.Exec(ipv4Table)
 	if err != nil {
-		return errors.Wrap(err, "ip storage: creating ip table")
+		return errors.Wrap(err, "ipv4 storage: creating ipv4 table")
 	}
 	s.db = db
 	return nil
@@ -54,7 +54,7 @@ func (s *IPv4Storage) Store(ctx context.Context, packet container.Packet) error 
 			:src, :dst
 		)`, schema)
 	if err != nil {
-		return errors.Wrap(err, "ip storage: inserting ip packet")
+		return errors.Wrap(err, "ipv4 storage: inserting ipv4 packet")
 	}
 
 	return nil

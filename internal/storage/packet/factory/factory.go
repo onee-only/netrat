@@ -13,6 +13,8 @@ func New(t gopacket.LayerType) storage.LayerStorage {
 		return &layer.TCPStorage{}
 	case layers.LayerTypeIPv4:
 		return &layer.IPv4Storage{}
+	case layers.LayerTypeIPv6:
+		return &layer.IPv6Storage{}
 	}
 
 	return nil
