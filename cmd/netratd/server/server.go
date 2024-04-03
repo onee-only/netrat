@@ -12,7 +12,7 @@ import (
 	goerrors "errors"
 
 	"github.com/onee-only/netrat/internal/msg"
-	"github.com/onee-only/netrat/internal/worker"
+	workmanager "github.com/onee-only/netrat/internal/worker/manager"
 	"github.com/pkg/errors"
 )
 
@@ -25,7 +25,7 @@ type Server struct {
 
 	action *actTable
 
-	wManager *worker.Manager
+	workManager *workmanager.Manager
 }
 
 // New creates new netrat daemon.

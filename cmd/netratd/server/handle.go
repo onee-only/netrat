@@ -10,12 +10,12 @@ import (
 
 func (srv *Server) HandleListen(ctx context.Context, r *msg.Request) (*msg.Response, error) {
 	p := r.Payload.(msg.WorkerInitPayload)
-	w, ctx, err := worker.NewWorker(ctx, &p.Opts)
+	w, ctx, err := worker.New(ctx, &p.Opts)
 	if err != nil {
 		return nil, err
 	}
 
-	srv.wManager.RegisterWorker(w)
+	srv.workManager.RegisterWorker(w)
 
 	go func() {
 		if err := w.Exec(ctx); err != nil {
@@ -24,6 +24,6 @@ func (srv *Server) HandleListen(ctx context.Context, r *msg.Request) (*msg.Respo
 	}()
 
 	return &msg.Response{
-		Payload: msg.WorkerIDPayload{ID: w.ID},
+		Payload: msg.WorkerIDPayload{ID: w.ID()},
 	}, nil
 }

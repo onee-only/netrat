@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -101,7 +100,6 @@ func (s *httpStream) readHTTP() {
 		}
 
 		s.lastSeen = s.buffered.Seen
-		w.Write(os.Stdout)
 
 		b := new(bytes.Buffer)
 		w.Write(b)
@@ -146,7 +144,6 @@ func (s *httpStream) Reassembled(reassemblies []tcpassembly.Reassembly) {
 			return
 		case s.reasmStream <- r:
 		}
-
 	}
 }
 

@@ -108,16 +108,9 @@ func (l *listener) listen(ctx context.Context) (_ <-chan container.Packet, err e
 				}
 			}
 
-			id := uuid.New()
-
-			for _, capLayer := range l.opts.CaptureLayers {
-				if layer := packet.Layer(capLayer); layer != nil {
-					packetStream <- container.Packet{
-						ID:     id,
-						Packet: packet,
-					}
-					break
-				}
+			packetStream <- container.Packet{
+				ID:     uuid.New(),
+				Packet: packet,
 			}
 		}
 	}()

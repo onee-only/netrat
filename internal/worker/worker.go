@@ -57,9 +57,9 @@ func (o *WorkerOptions) Validate() (*WorkerOptions, error) {
 }
 
 type Worker struct {
-	ID      uuid.UUID
-	Start   time.Time
-	Timeout time.Duration
+	id      uuid.UUID
+	start   time.Time
+	timeout time.Duration
 
 	state stat.WorkerState
 
@@ -127,8 +127,8 @@ func New(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.Context
 	c, cancel := context.WithCancel(ctx)
 
 	w = &Worker{
-		ID:              id,
-		Timeout:         opts.Timeout,
+		id:              id,
+		timeout:         opts.Timeout,
 		state:           stat.WorkerStateInit,
 		listener:        listener,
 		assemblers:      assemblers,
@@ -142,7 +142,7 @@ func New(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.Context
 
 func (w *Worker) Exec(ctx context.Context) error {
 	w.state = stat.WorkerStateUp
-	w.Start = time.Now()
+	w.start = time.Now()
 	defer w.updateState(stat.WorkerStateFin)
 
 	packets, err := w.listener.listen(ctx)
@@ -168,11 +168,9 @@ func (w *Worker) Exec(ctx context.Context) error {
 			return errors.Wrap(err, "worker: storing the packet")
 		}
 
-		if packet.NetworkLayer() != nil {
-			if _, ok := packet.TransportLayer().(*layers.TCP); ok {
-				for _, asm := range w.assemblers {
-					asm.Provide(packet)
-				}
+		for _, asm := range w.assemblers {
+			if asm.Valid(packet) {
+				asm.Provide(packet)
 			}
 		}
 	}
@@ -182,6 +180,10 @@ func (w *Worker) Cancel() {
 	if w.updateState(stat.WorkerStateCancel) {
 		w.cancel()
 	}
+}
+
+func (w *Worker) ID() uuid.UUID {
+	return w.id
 }
 
 func (w *Worker) updateState(s stat.WorkerState) (changed bool) {

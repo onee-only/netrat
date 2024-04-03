@@ -68,6 +68,11 @@ func (asm *HTTPAssembler) Provide(packet container.Packet) {
 	)
 }
 
-func (asm *HTTPAssembler) Cancel() {
-	asm.cancel()
+func (asm *HTTPAssembler) Valid(packet container.Packet) bool {
+	p := packet.Packet
+
+	ipOK := p.Layer(layers.LayerTypeIPv4) != nil || p.Layer(layers.LayerTypeIPv6) != nil
+	tcpOK := p.Layer(layers.LayerTypeTCP) != nil
+
+	return ipOK && tcpOK
 }
