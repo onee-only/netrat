@@ -82,7 +82,7 @@ type HTTPSchema struct {
 	Dst        string    `db:"dst"`
 	Start      time.Time `db:"start"`
 	End        time.Time `db:"end"`
-	IsResponse int8      `db:"is_response"`
+	IsResponse uint8     `db:"is_response"`
 }
 
 func httpToSchema(metadata container.HTTPAsmMetadata) (schema *HTTPSchema) {
@@ -93,6 +93,6 @@ func httpToSchema(metadata container.HTTPAsmMetadata) (schema *HTTPSchema) {
 		Dst:        util.EndpointToString(metadata.Net.Dst(), metadata.Transport.Dst()),
 		Start:      metadata.Start,
 		End:        metadata.End,
-		IsResponse: int8(util.BoolToUint8(metadata.IsResponse)),
+		IsResponse: util.BoolToUint8(metadata.IsResponse),
 	}
 }

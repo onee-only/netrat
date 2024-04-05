@@ -15,6 +15,8 @@ func New(t gopacket.LayerType) storage.LayerStorage {
 		return &layer.IPv4Storage{}
 	case layers.LayerTypeIPv6:
 		return &layer.IPv6Storage{}
+	case layers.LayerTypeDNS:
+		return &layer.DNSStorage{}
 	}
 
 	return nil

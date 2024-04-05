@@ -44,6 +44,7 @@ func (s *TCPStorage) Init(db *sqlx.DB) error {
 func (s *TCPStorage) Store(ctx context.Context, packet container.Packet) error {
 	tcp := packet.TransportLayer().(*layers.TCP)
 	schema := tcpToSchema(packet.ID, tcp)
+
 	_, err := s.db.NamedExecContext(ctx,
 		`INSERT INTO tcp VALUES(
 			:id, :src, :dst, :seqnum, :acknum, :offset,
