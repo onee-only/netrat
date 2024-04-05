@@ -11,6 +11,8 @@ func New(t gopacket.LayerType) storage.LayerStorage {
 	switch t {
 	case layers.LayerTypeTCP:
 		return &layer.TCPStorage{}
+	case layers.LayerTypeUDP:
+		return &layer.UDPStorage{}
 	case layers.LayerTypeIPv4:
 		return &layer.IPv4Storage{}
 	case layers.LayerTypeIPv6:
