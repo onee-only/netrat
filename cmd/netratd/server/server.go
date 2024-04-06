@@ -31,7 +31,8 @@ type Server struct {
 // New creates new netrat daemon.
 func New(opts Options) *Server {
 	srv := Server{
-		socketAddr: opts.SocketAddr,
+		socketAddr:  opts.SocketAddr,
+		workManager: workmanager.New(),
 	}
 
 	srv.action = &actTable{
@@ -51,7 +52,7 @@ func (srv *Server) Run(ctx context.Context) (err error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		srv.serveUnix(ctx, errchan)
+		errchan <- srv.serveUnix(ctx)
 	}()
 
 	wg.Wait()
@@ -65,19 +66,17 @@ func (srv *Server) Run(ctx context.Context) (err error) {
 	return err
 }
 
-func (srv *Server) serveUnix(ctx context.Context, errchan chan<- error) {
+func (srv *Server) serveUnix(ctx context.Context) error {
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: srv.socketAddr})
 	if err != nil {
-		errchan <- errors.Wrap(err, "server: listening socket")
-		return
+		return errors.Wrap(err, "server: listening socket")
 	}
 	defer listener.Close()
 
 	for {
 		select {
 		case <-ctx.Done():
-			errchan <- errors.Wrap(context.Cause(ctx), "server: waiting for connection")
-			return
+			return errors.Wrap(context.Cause(ctx), "server: waiting for connection")
 		default:
 			listener.SetDeadline(time.Now().Add(time.Second))
 		}
@@ -87,8 +86,8 @@ func (srv *Server) serveUnix(ctx context.Context, errchan chan<- error) {
 			if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
 				continue
 			}
-			errchan <- errors.Wrap(err, "server: accepting connection")
-			return
+			return errors.Wrap(err, "server: accepting connection")
+
 		}
 
 		go func() {
