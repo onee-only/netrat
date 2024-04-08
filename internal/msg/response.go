@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/google/uuid"
+	"github.com/onee-only/netrat/pkg/stat"
 )
 
 type Response struct {
@@ -41,6 +42,16 @@ type WorkerIDPayload struct {
 	ID uuid.UUID
 }
 
+type WorkerListPayload struct {
+	Workers []stat.Worker
+}
+
+type WorkerStatPayload struct {
+	Stat stat.Worker
+}
+
 func registerResponse() {
 	gob.Register(WorkerIDPayload{})
+	gob.Register(WorkerListPayload{})
+	gob.Register(WorkerStatPayload{})
 }

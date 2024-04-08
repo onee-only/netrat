@@ -37,7 +37,9 @@ func New(opts Options) *Server {
 
 	srv.action = &actTable{
 		lookup: map[msg.RequestType]requestHandler{
-			msg.RequestTypeListen: srv.HandleListen,
+			msg.RequestTypeListen:     srv.HandleListen,
+			msg.RequestTypeWorkerList: srv.HandleList,
+			msg.RequestTypeWorkerStat: srv.HandleStat,
 		},
 	}
 

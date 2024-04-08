@@ -11,6 +11,8 @@ type RequestType uint8
 
 const (
 	RequestTypeListen RequestType = 1 + iota
+	RequestTypeWorkerList
+	RequestTypeWorkerStat
 )
 
 type Request struct {

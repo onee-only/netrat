@@ -141,14 +141,15 @@ func New(ctx context.Context, opts *WorkerOptions) (w *Worker, c context.Context
 }
 
 func (w *Worker) Exec(ctx context.Context) error {
-	w.state = stat.WorkerStateUp
-	w.start = time.Now()
 	defer w.updateState(stat.WorkerStateFin)
 
 	packets, err := w.listener.listen(ctx)
 	if err != nil {
 		return err
 	}
+
+	w.state = stat.WorkerStateUp
+	w.start = time.Now()
 
 	var ok bool
 	var packet container.Packet
@@ -195,6 +196,36 @@ func (w *Worker) updateState(s stat.WorkerState) (changed bool) {
 		return true
 	}
 	return false
+}
+
+func (w *Worker) ExportStats() stat.Worker {
+	stat := stat.Worker{
+		ID:        w.id,
+		CreatedAt: w.start,
+		Timeout:   w.timeout,
+		State:     w.state,
+
+		SnapLen:     w.listener.opts.SnapLen,
+		Promiscuous: w.listener.opts.Promiscuous,
+		Captures:    w.listener.opts.CaptureLayers,
+		BPFFilter:   w.listener.opts.BPFFilter,
+	}
+
+	if w.listener.opts.Device != "" {
+		stat.Live = true
+		stat.Src = w.listener.opts.Device
+	} else {
+		stat.Src = w.listener.opts.PcapFile
+	}
+
+	assembles := make([]assemble.AssembleType, 0, len(w.assemblers))
+	for _, asm := range w.assemblers {
+		assembles = append(assembles, asm.Type())
+	}
+
+	stat.Assembles = assembles
+
+	return stat
 }
 
 func makeNamespace(id uuid.UUID) (string, error) {

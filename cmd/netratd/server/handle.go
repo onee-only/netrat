@@ -27,3 +27,25 @@ func (srv *Server) HandleListen(ctx context.Context, r *msg.Request) (*msg.Respo
 		Payload: msg.WorkerIDPayload{ID: w.ID()},
 	}, nil
 }
+
+func (srv *Server) HandleList(ctx context.Context, r *msg.Request) (*msg.Response, error) {
+	workers := srv.workManager.All()
+
+	return &msg.Response{
+		Payload: msg.WorkerListPayload{Workers: workers},
+	}, nil
+}
+
+func (srv *Server) HandleStat(ctx context.Context, r *msg.Request) (*msg.Response, error) {
+	p := r.Payload.(msg.WorkerIDPayload)
+	stat, err := srv.workManager.FetchStat(p.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &msg.Response{
+		Payload: msg.WorkerStatPayload{
+			Stat: stat,
+		},
+	}, nil
+}
