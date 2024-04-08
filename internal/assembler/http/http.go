@@ -10,6 +10,7 @@ import (
 	"github.com/onee-only/netrat/internal/assembler"
 	"github.com/onee-only/netrat/internal/container"
 	"github.com/onee-only/netrat/internal/storage"
+	"github.com/onee-only/netrat/pkg/assemble"
 )
 
 const timeout = 30 * time.Second
@@ -75,4 +76,8 @@ func (asm *HTTPAssembler) Valid(packet container.Packet) bool {
 	tcpOK := p.Layer(layers.LayerTypeTCP) != nil
 
 	return ipOK && tcpOK
+}
+
+func (asm *HTTPAssembler) Type() assemble.AssembleType {
+	return assemble.AssembleTypeHTTP
 }
